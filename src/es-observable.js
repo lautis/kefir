@@ -1,21 +1,37 @@
 const {extend} = require('./utils/objects');
 
 function ESObservable(observable) {
-  this._observable = observable.takeErrors(1);
+  this._observable = observable;
 }
 
 extend(ESObservable.prototype, {
-  subscribe(observer) {
-    let fn = function(event) {
-      if (event.type === "value" && observer.next) {
+  _dispatch(observer, fn, event) {
+    if (event.type === "value" && observer.next) {
+      try {
         observer.next(event.value);
-      } else if (event.type == "error" && observer.error) {
-        observer.error(event.value);
-      } else if (event.type === "end" && observer.complete) {
-        observer.complete(event.value);
+      } catch(ex) {
+        this._unsubscribe(fn);
+        throw ex;
       }
+    } else if (event.type == "error") {
+      try {
+        if (observer.error) {
+          observer.error(event.value);
+        }
+      } finally {
+        this._unsubscribe(fn);
+      }
+    } else if (event.type === "end" && observer.complete) {
+      observer.complete(event.value);
     }
+  },
 
+  _unsubscribe(fn) {
+    this._observable.offAny(fn);
+  },
+
+  subscribe(observer) {
+    const fn = (event) => this._dispatch(observer, fn, event);
     this._observable.onAny(fn);
     return () => this._observable.offAny(fn);
   }
